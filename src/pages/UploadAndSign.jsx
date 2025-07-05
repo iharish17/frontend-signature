@@ -1,150 +1,148 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
+import API from "../utils/api";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
-  const [signatureImage, setSignatureImage] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [signatureText, setSignatureText] = useState("Harish Kumar");
+  const [font, setFont] = useState("Helvetica");
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
 
-  const signatureRef = useRef(null);
-
-  // Memoized URLs
-  const pdfUrl = useMemo(() => pdfFile ? URL.createObjectURL(pdfFile) : null, [pdfFile]);
-  const signatureUrl = useMemo(() => signatureImage ? URL.createObjectURL(signatureImage) : null, [signatureImage]);
-
-  // Cleanup Blob URLs
-  useEffect(() => {
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-      if (signatureUrl) URL.revokeObjectURL(signatureUrl);
-    };
-  }, [pdfUrl, signatureUrl]);
+  const draggableRef = useRef(null);
 
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file?.type === "application/pdf") {
       setPdfFile(file);
+      setPdfUrl(URL.createObjectURL(file));
     } else {
       toast.error("Please upload a valid PDF.");
     }
-  };
-
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file?.type.startsWith("image/")) {
-      setSignatureImage(file);
-    } else {
-      toast.error("Please upload an image (JPG or PNG).");
-    }
-  };
-
-  // Fix: onLoadSuccess gets page object, not {width, height}
-  const onPdfLoadSuccess = (page) => {
-    const viewport = page.getViewport({ scale: 1 });
-    setPageDimensions({ width: viewport.width, height: viewport.height });
   };
 
   const handleDragStop = (e, data) => {
     setPosition({ x: data.x, y: data.y });
   };
 
+  const onPdfLoadSuccess = ({ width, height }) => {
+    setPageDimensions({ width, height });
+  };
+
+  const uploadToBackend = async (pdfBlob) => {
+    const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
+      type: "application/pdf",
+    });
+
+    const formData = new FormData();
+    formData.append("pdf", file);
+
+    try {
+      await API.post("/docs/upload", formData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      toast.success("✅ Signed PDF uploaded to backend!");
+    } catch (err) {
+      toast.error("❌ Upload failed");
+      console.error(err.response?.data || err.message);
+    }
+  };
+
   const handleDownload = async () => {
-    if (!pdfFile || !signatureImage) return;
+    if (!pdfFile || !pageDimensions.width) return;
 
     const existingPdfBytes = await pdfFile.arrayBuffer();
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // Calculate scaling
-    const renderedWidth = 600; // width you render the PDF at
-    const scale = renderedWidth / (pageDimensions.width || 1);
-    const x = position.x / scale;
-    const y = height - position.y / scale - 50;
+    const scaleFactor = 600 / pageDimensions.width;
+    const actualX = position.x / scaleFactor;
+    const actualY = height - position.y / scaleFactor - 20;
 
-    const imgBytes = await signatureImage.arrayBuffer();
-    const ext = signatureImage.type.split("/")[1];
-    const embeddedImg = ext === "png"
-      ? await pdfDoc.embedPng(imgBytes)
-      : await pdfDoc.embedJpg(imgBytes);
+    const selectedFont = await pdfDoc.embedFont(StandardFonts[font]);
 
-    const imgDims = embeddedImg.scale(0.5);
-    page.drawImage(embeddedImg, {
-      x,
-      y,
-      width: imgDims.width,
-      height: imgDims.height,
+    page.drawText(signatureText, {
+      x: actualX,
+      y: actualY,
+      size: 18,
+      font: selectedFont,
+      color: rgb(0, 0, 0),
     });
 
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
+
+    await uploadToBackend(blob);
+
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
     link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 100);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-8 px-4">
-      <h1 className="text-3xl font-bold mb-6 text-blue-700">📄 Upload & Sign PDF</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex flex-col items-center p-6">
+      <h1 className="text-3xl font-bold mb-6 text-blue-700">Upload & Sign PDF</h1>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div>
-          <label className="block mb-1 font-medium">Upload PDF:</label>
-          <input type="file" accept="application/pdf" onChange={handlePdfChange} />
-        </div>
-        <div>
-          <label className="block mb-1 font-medium">Upload Signature Image:</label>
-          <input type="file" accept="image/*" onChange={handleImageChange} />
-        </div>
+        <input type="file" accept="application/pdf" onChange={handlePdfChange} />
+        <input
+          type="text"
+          value={signatureText}
+          onChange={(e) => setSignatureText(e.target.value)}
+          placeholder="Type your signature"
+          className="border px-3 py-1 rounded"
+        />
+        <select
+          value={font}
+          onChange={(e) => setFont(e.target.value)}
+          className="border px-2 py-1 rounded"
+        >
+          <option value="Helvetica">Helvetica</option>
+          <option value="Courier">Courier</option>
+          <option value="TimesRoman">Times Roman</option>
+        </select>
       </div>
 
       {pdfUrl && (
-        <div style={{ position: "relative", width: 600 }} className="border shadow rounded overflow-hidden">
+        <div style={{ position: "relative", width: 600 }} className="border shadow rounded">
           <Document file={pdfUrl}>
-            <Page
-              pageNumber={1}
-              width={600}
-              onLoadSuccess={onPdfLoadSuccess}
-            />
+            <Page pageNumber={1} width={600} onLoadSuccess={onPdfLoadSuccess} />
           </Document>
 
-          {signatureUrl && (
-            <Draggable
-              onStop={handleDragStop}
-              nodeRef={signatureRef}
-              bounds="parent"
-              position={position}
+          <Draggable nodeRef={draggableRef} onStop={handleDragStop} bounds="parent">
+            <div
+              ref={draggableRef}
+              className="absolute text-black bg-white/80 px-2 py-1 rounded shadow border border-gray-300 cursor-move"
+              style={{
+                fontFamily: font,
+                fontSize: "18px",
+                top: position.y,
+                left: position.x,
+                zIndex: 10,
+              }}
             >
-              <img
-                ref={signatureRef}
-                src={signatureUrl}
-                alt="Signature"
-                className="absolute cursor-move border border-gray-300 rounded shadow"
-                style={{
-                  top: position.y,
-                  left: position.x,
-                  width: "120px",
-                }}
-              />
-            </Draggable>
-          )}
+              ✍️ {signatureText}
+            </div>
+          </Draggable>
         </div>
       )}
 
-      {pdfUrl && signatureImage && (
+      {pdfUrl && (
         <button
           onClick={handleDownload}
           className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
         >
-          📝 Sign & Download
+          Sign & Download
         </button>
       )}
     </div>

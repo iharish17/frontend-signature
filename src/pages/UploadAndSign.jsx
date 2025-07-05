@@ -5,7 +5,7 @@ import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
 
-pdfjs.GlobalWorkerOptions.workerSrc = cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js;
+pdfjs.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -66,7 +66,6 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // Calculate actual coordinates on the real PDF
     const scaleFactor = 600 / pageDimensions.width;
     const actualX = position.x / scaleFactor;
     const actualY = height - position.y / scaleFactor - 20;
@@ -84,10 +83,10 @@ const UploadAndSign = () => {
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
-    // Upload
+    // Upload to backend
     await uploadToBackend(blob);
 
-    // Download
+    // Trigger download
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";

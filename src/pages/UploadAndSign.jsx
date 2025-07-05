@@ -1,24 +1,35 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
+
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState(null);
   const [signatureImage, setSignatureImage] = useState(null);
   const [position, setPosition] = useState({ x: 100, y: 100 });
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
 
   const signatureRef = useRef(null);
 
+  // Memoized URLs
+  const pdfUrl = useMemo(() => pdfFile ? URL.createObjectURL(pdfFile) : null, [pdfFile]);
+  const signatureUrl = useMemo(() => signatureImage ? URL.createObjectURL(signatureImage) : null, [signatureImage]);
+
+  // Cleanup Blob URLs
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      if (signatureUrl) URL.revokeObjectURL(signatureUrl);
+    };
+  }, [pdfUrl, signatureUrl]);
+
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file?.type === "application/pdf") {
       setPdfFile(file);
-      setPdfUrl(URL.createObjectURL(file));
     } else {
       toast.error("Please upload a valid PDF.");
     }
@@ -33,8 +44,10 @@ const UploadAndSign = () => {
     }
   };
 
-  const onPdfLoadSuccess = ({ width, height }) => {
-    setPageDimensions({ width, height });
+  // Fix: onLoadSuccess gets page object, not {width, height}
+  const onPdfLoadSuccess = (page) => {
+    const viewport = page.getViewport({ scale: 1 });
+    setPageDimensions({ width: viewport.width, height: viewport.height });
   };
 
   const handleDragStop = (e, data) => {
@@ -49,7 +62,9 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    const scale = 600 / pageDimensions.width;
+    // Calculate scaling
+    const renderedWidth = 600; // width you render the PDF at
+    const scale = renderedWidth / (pageDimensions.width || 1);
     const x = position.x / scale;
     const y = height - position.y / scale - 50;
 
@@ -73,6 +88,7 @@ const UploadAndSign = () => {
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
     link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
   };
 
   return (
@@ -100,15 +116,16 @@ const UploadAndSign = () => {
             />
           </Document>
 
-          {signatureImage && (
+          {signatureUrl && (
             <Draggable
               onStop={handleDragStop}
               nodeRef={signatureRef}
               bounds="parent"
+              position={position}
             >
               <img
                 ref={signatureRef}
-                src={URL.createObjectURL(signatureImage)}
+                src={signatureUrl}
                 alt="Signature"
                 className="absolute cursor-move border border-gray-300 rounded shadow"
                 style={{

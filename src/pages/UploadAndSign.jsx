@@ -35,7 +35,6 @@ const UploadAndSign = () => {
   const onPdfLoadSuccess = ({ width, height }) => {
     setPageDimensions({ width, height });
   };
-
   const uploadToBackend = async (pdfBlob) => {
     const formData = new FormData();
     const file = new File([pdfBlob], ${Date.now()}-signed-document.pdf, {

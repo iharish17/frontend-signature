@@ -5,7 +5,9 @@ import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
 
-pdfjs.GlobalWorkerOptions.workerSrc = //cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js;
+// ✅ Fixed workerSrc interpolation
+pdfjs.GlobalWorkerOptions.workerSrc = 
+  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -17,6 +19,7 @@ const UploadAndSign = () => {
 
   const draggableRef = useRef(null);
 
+  // 📂 Handle PDF file selection
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file?.type === "application/pdf") {
@@ -27,16 +30,19 @@ const UploadAndSign = () => {
     }
   };
 
+  // 📌 Update position when dragging stops
   const handleDragStop = (e, data) => {
     setPosition({ x: data.x, y: data.y });
   };
 
+  // 📄 Store page width/height for scaling
   const onPdfLoadSuccess = ({ width, height }) => {
     setPageDimensions({ width, height });
   };
 
+  // ☁️ Upload signed PDF to backend
   const uploadToBackend = async (pdfBlob) => {
-    const file = new File([pdfBlob], ${Date.now()}-signed.pdf, {
+    const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
       type: "application/pdf",
     });
 
@@ -46,7 +52,7 @@ const UploadAndSign = () => {
     try {
       await API.post("/docs/upload", formData, {
         headers: {
-          Authorization: Bearer ${localStorage.getItem("token")},
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
       toast.success("✅ Signed PDF uploaded to backend!");
@@ -56,6 +62,7 @@ const UploadAndSign = () => {
     }
   };
 
+  // 💾 Download signed PDF
   const handleDownload = async () => {
     if (!pdfFile || !pageDimensions.width) return;
 
@@ -64,6 +71,7 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
+    // 📏 Scale coordinates from preview to PDF size
     const scaleFactor = 600 / pageDimensions.width;
     const actualX = position.x / scaleFactor;
     const actualY = height - position.y / scaleFactor - 20;
@@ -83,6 +91,7 @@ const UploadAndSign = () => {
 
     await uploadToBackend(blob);
 
+    // 💾 Trigger download in browser
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
@@ -93,6 +102,7 @@ const UploadAndSign = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex flex-col items-center p-6">
       <h1 className="text-3xl font-bold mb-6 text-blue-700">Upload & Sign PDF</h1>
 
+      {/* Upload, Signature Text, Font Selection */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input type="file" accept="application/pdf" onChange={handlePdfChange} />
         <input
@@ -113,13 +123,20 @@ const UploadAndSign = () => {
         </select>
       </div>
 
+      {/* PDF Preview */}
       {pdfUrl && (
         <div style={{ position: "relative", width: 600 }} className="border shadow rounded">
           <Document file={pdfUrl}>
             <Page pageNumber={1} width={600} onLoadSuccess={onPdfLoadSuccess} />
           </Document>
 
-          <Draggable nodeRef={draggableRef} onStop={handleDragStop} bounds="parent">
+          {/* Draggable Signature */}
+          <Draggable
+            nodeRef={draggableRef}
+            onStop={handleDragStop}
+            bounds="parent"
+            defaultPosition={position}
+          >
             <div
               ref={draggableRef}
               className="absolute text-black bg-white/80 px-2 py-1 rounded shadow border border-gray-300 cursor-move"
@@ -137,6 +154,7 @@ const UploadAndSign = () => {
         </div>
       )}
 
+      {/* Download Button */}
       {pdfUrl && (
         <button
           onClick={handleDownload}

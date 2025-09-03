@@ -4,11 +4,10 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
 
-// ✅ Worker source for pdf.js
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// ✅ Use bundled worker (works on Vercel too)
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.entry";
+pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -20,7 +19,7 @@ const UploadAndSign = () => {
 
   const draggableRef = useRef(null);
 
-  // 📂 Handle PDF upload
+  // 📂 Handle PDF file selection
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file?.type === "application/pdf") {
@@ -31,14 +30,14 @@ const UploadAndSign = () => {
     }
   };
 
-  // 📄 Capture PDF page size for scaling
-  const onPdfLoadSuccess = (page) => {
-    setPageDimensions({ width: page.width, height: page.height });
-  };
-
-  // 📌 Update signature position when drag stops
+  // 📌 Update position when dragging stops
   const handleDragStop = (e, data) => {
     setPosition({ x: data.x, y: data.y });
+  };
+
+  // 📄 Store page width/height for scaling
+  const onPdfLoadSuccess = (page) => {
+    setPageDimensions({ width: page.originalWidth, height: page.originalHeight });
   };
 
   // ☁️ Upload signed PDF to backend
@@ -64,7 +63,7 @@ const UploadAndSign = () => {
     }
   };
 
-  // 🖊️ Draw signature into PDF + download + upload
+  // 💾 Download signed PDF
   const handleDownload = async () => {
     if (!pdfFile || !pageDimensions.width) return;
 
@@ -73,10 +72,10 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // scale preview (600px wide) → real PDF size
-    const scale = width / 600;
-    const actualX = position.x * scale;
-    const actualY = height - position.y * scale - 20;
+    // 📏 Scale coordinates from preview to PDF size
+    const scaleFactor = 600 / pageDimensions.width;
+    const actualX = position.x / scaleFactor;
+    const actualY = height - position.y / scaleFactor - 20;
 
     const selectedFont = await pdfDoc.embedFont(StandardFonts[font]);
 
@@ -93,7 +92,7 @@ const UploadAndSign = () => {
 
     await uploadToBackend(blob);
 
-    // 💾 Trigger browser download
+    // 💾 Trigger download in browser
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
@@ -104,7 +103,7 @@ const UploadAndSign = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex flex-col items-center p-6">
       <h1 className="text-3xl font-bold mb-6 text-blue-700">Upload & Sign PDF</h1>
 
-      {/* Upload controls */}
+      {/* Upload, Signature Text, Font Selection */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input type="file" accept="application/pdf" onChange={handlePdfChange} />
         <input
@@ -127,24 +126,23 @@ const UploadAndSign = () => {
 
       {/* PDF Preview */}
       {pdfUrl && (
-        <div
-          style={{ position: "relative", width: 600 }}
-          className="border shadow rounded"
-        >
-          <Document file={pdfUrl}>
+        <div style={{ position: "relative", width: 600 }} className="border shadow rounded">
+          <Document file={{ url: pdfUrl }}>
             <Page
               pageNumber={1}
               width={600}
               onLoadSuccess={onPdfLoadSuccess}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
             />
           </Document>
 
-          {/* Draggable signature */}
+          {/* Draggable Signature */}
           <Draggable
             nodeRef={draggableRef}
-            position={position}
             onStop={handleDragStop}
             bounds="parent"
+            defaultPosition={position}
           >
             <div
               ref={draggableRef}
@@ -161,7 +159,7 @@ const UploadAndSign = () => {
         </div>
       )}
 
-      {/* Download button */}
+      {/* Download Button */}
       {pdfUrl && (
         <button
           onClick={handleDownload}

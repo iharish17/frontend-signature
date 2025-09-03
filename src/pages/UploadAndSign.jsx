@@ -5,11 +5,12 @@ import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
 
-// ✅ Use bundled worker (works on Vercel too)
+// ✅ Worker config for pdfjs-dist v5.x
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.js",
+  "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
+
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);

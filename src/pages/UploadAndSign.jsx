@@ -42,25 +42,27 @@ const UploadAndSign = () => {
 
   // ☁️ Upload signed PDF to backend
   const uploadToBackend = async (pdfBlob) => {
-    const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
-      type: "application/pdf",
+  const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
+    type: "application/pdf",
+  });
+
+  const formData = new FormData();
+  formData.append("pdf", file);
+
+  try {
+    await API.post("/docs/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data", // ✅ Explicitly set
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
     });
+    toast.success("✅ Signed PDF uploaded to backend!");
+  } catch (err) {
+    toast.error("❌ Upload failed");
+    console.error(err.response?.data || err.message);
+  }
+};
 
-    const formData = new FormData();
-    formData.append("pdf", file);
-
-    try {
-      await API.post("/docs/upload", formData, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-      toast.success("✅ Signed PDF uploaded to backend!");
-    } catch (err) {
-      toast.error("❌ Upload failed");
-      console.error(err.response?.data || err.message);
-    }
-  };
 
   // 💾 Download signed PDF
   const handleDownload = async () => {

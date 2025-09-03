@@ -4,8 +4,10 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 
-// ✅ Correct worker source (works in Vercel + local)
+// ✅ Worker source for pdf.js
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 const UploadAndSign = () => {
@@ -18,7 +20,7 @@ const UploadAndSign = () => {
 
   const draggableRef = useRef(null);
 
-  // 📂 Handle PDF file selection
+  // 📂 Handle PDF upload
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file?.type === "application/pdf") {
@@ -29,14 +31,14 @@ const UploadAndSign = () => {
     }
   };
 
-  // 📌 Update position when dragging stops
-  const handleDragStop = (e, data) => {
-    setPosition({ x: data.x, y: data.y });
-  };
-
-  // 📄 Store page width/height for scaling
+  // 📄 Capture PDF page size for scaling
   const onPdfLoadSuccess = (page) => {
     setPageDimensions({ width: page.width, height: page.height });
+  };
+
+  // 📌 Update signature position when drag stops
+  const handleDragStop = (e, data) => {
+    setPosition({ x: data.x, y: data.y });
   };
 
   // ☁️ Upload signed PDF to backend
@@ -62,7 +64,7 @@ const UploadAndSign = () => {
     }
   };
 
-  // 💾 Sign + Download + Upload
+  // 🖊️ Draw signature into PDF + download + upload
   const handleDownload = async () => {
     if (!pdfFile || !pageDimensions.width) return;
 
@@ -71,10 +73,10 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // 📏 Scale coordinates from preview (600px) → actual PDF
-    const scaleFactor = 600 / pageDimensions.width;
-    const actualX = position.x / scaleFactor;
-    const actualY = height - position.y / scaleFactor - 20;
+    // scale preview (600px wide) → real PDF size
+    const scale = width / 600;
+    const actualX = position.x * scale;
+    const actualY = height - position.y * scale - 20;
 
     const selectedFont = await pdfDoc.embedFont(StandardFonts[font]);
 
@@ -89,10 +91,9 @@ const UploadAndSign = () => {
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
-    // Upload signed PDF
     await uploadToBackend(blob);
 
-    // Trigger download in browser
+    // 💾 Trigger browser download
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
@@ -103,7 +104,7 @@ const UploadAndSign = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex flex-col items-center p-6">
       <h1 className="text-3xl font-bold mb-6 text-blue-700">Upload & Sign PDF</h1>
 
-      {/* Upload, Signature Text, Font Selection */}
+      {/* Upload controls */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input type="file" accept="application/pdf" onChange={handlePdfChange} />
         <input
@@ -131,15 +132,19 @@ const UploadAndSign = () => {
           className="border shadow rounded"
         >
           <Document file={pdfUrl}>
-            <Page pageNumber={1} width={600} onLoadSuccess={onPdfLoadSuccess} />
+            <Page
+              pageNumber={1}
+              width={600}
+              onLoadSuccess={onPdfLoadSuccess}
+            />
           </Document>
 
-          {/* Draggable Signature */}
+          {/* Draggable signature */}
           <Draggable
             nodeRef={draggableRef}
+            position={position}
             onStop={handleDragStop}
             bounds="parent"
-            defaultPosition={position}
           >
             <div
               ref={draggableRef}
@@ -156,7 +161,7 @@ const UploadAndSign = () => {
         </div>
       )}
 
-      {/* Download Button */}
+      {/* Download button */}
       {pdfUrl && (
         <button
           onClick={handleDownload}

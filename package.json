@@ -11,6 +11,7 @@
     "pdf-lib": "^1.17.1",
     "react-pdf": "^10.1.0",
     "pdfjs-dist": "^5.4.149",
+    "react-draggable": "^4.4.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.3",

@@ -5,9 +5,8 @@ import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
 
-// ✅ Fixed workerSrc interpolation
-pdfjs.GlobalWorkerOptions.workerSrc = 
-  `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// ✅ Correct worker source (works in Vercel + local)
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -36,35 +35,34 @@ const UploadAndSign = () => {
   };
 
   // 📄 Store page width/height for scaling
-  const onPdfLoadSuccess = ({ width, height }) => {
-    setPageDimensions({ width, height });
+  const onPdfLoadSuccess = (page) => {
+    setPageDimensions({ width: page.width, height: page.height });
   };
 
   // ☁️ Upload signed PDF to backend
   const uploadToBackend = async (pdfBlob) => {
-  const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
-    type: "application/pdf",
-  });
-
-  const formData = new FormData();
-  formData.append("pdf", file);
-
-  try {
-    await API.post("/docs/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data", // ✅ Explicitly set
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
+    const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
+      type: "application/pdf",
     });
-    toast.success("✅ Signed PDF uploaded to backend!");
-  } catch (err) {
-    toast.error("❌ Upload failed");
-    console.error(err.response?.data || err.message);
-  }
-};
 
+    const formData = new FormData();
+    formData.append("pdf", file);
 
-  // 💾 Download signed PDF
+    try {
+      await API.post("/docs/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      toast.success("✅ Signed PDF uploaded to backend!");
+    } catch (err) {
+      toast.error("❌ Upload failed");
+      console.error(err.response?.data || err.message);
+    }
+  };
+
+  // 💾 Sign + Download + Upload
   const handleDownload = async () => {
     if (!pdfFile || !pageDimensions.width) return;
 
@@ -73,7 +71,7 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // 📏 Scale coordinates from preview to PDF size
+    // 📏 Scale coordinates from preview (600px) → actual PDF
     const scaleFactor = 600 / pageDimensions.width;
     const actualX = position.x / scaleFactor;
     const actualY = height - position.y / scaleFactor - 20;
@@ -91,9 +89,10 @@ const UploadAndSign = () => {
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
+    // Upload signed PDF
     await uploadToBackend(blob);
 
-    // 💾 Trigger download in browser
+    // Trigger download in browser
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
@@ -127,7 +126,10 @@ const UploadAndSign = () => {
 
       {/* PDF Preview */}
       {pdfUrl && (
-        <div style={{ position: "relative", width: 600 }} className="border shadow rounded">
+        <div
+          style={{ position: "relative", width: 600 }}
+          className="border shadow rounded"
+        >
           <Document file={pdfUrl}>
             <Page pageNumber={1} width={600} onLoadSuccess={onPdfLoadSuccess} />
           </Document>
@@ -145,8 +147,6 @@ const UploadAndSign = () => {
               style={{
                 fontFamily: font,
                 fontSize: "18px",
-                top: position.y,
-                left: position.x,
                 zIndex: 10,
               }}
             >

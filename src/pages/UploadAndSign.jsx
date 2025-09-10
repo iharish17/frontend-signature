@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
@@ -40,12 +40,17 @@ const UploadAndSign = () => {
     }
   };
 
+  // Save final position when dragging stops
   const handleDragStop = (e, data) => {
     setPosition({ x: data.x, y: data.y });
   };
 
-  const onPdfLoadSuccess = ({ width, height }) => {
-    setPageDimensions({ width, height });
+  // ✅ Capture page width & height correctly
+  const onPageLoadSuccess = (page) => {
+    setPageDimensions({
+      width: page.originalWidth,
+      height: page.originalHeight,
+    });
   };
 
   const uploadToBackend = async (pdfBlob) => {
@@ -77,17 +82,17 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // Scale factor to map screen coords → PDF coords
-    const scaleFactor = 600 / pageDimensions.width;
-    const actualX = position.x / scaleFactor;
-    const actualY = height - position.y / scaleFactor - 100; // adjust offset
+    // ✅ Correct scale factor: actual PDF / preview size
+    const scaleFactor = pageDimensions.width / 600;
+    const actualX = position.x * scaleFactor;
+    const actualY = height - position.y * scaleFactor - 100;
 
     // Embed image signature
     const signatureImageBytes = await fetch(signatureImg).then((res) =>
       res.arrayBuffer()
     );
     const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
-    const sigDims = signatureImage.scale(0.25); // adjust size
+    const sigDims = signatureImage.scale(0.25);
 
     page.drawImage(signatureImage, {
       x: actualX,
@@ -101,10 +106,13 @@ const UploadAndSign = () => {
 
     await uploadToBackend(blob);
 
+    // ✅ Trigger download
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "signed-document.pdf";
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -126,7 +134,11 @@ const UploadAndSign = () => {
           className="border shadow rounded"
         >
           <Document file={pdfUrl}>
-            <Page pageNumber={1} width={600} onLoadSuccess={onPdfLoadSuccess} />
+            <Page
+              pageNumber={1}
+              width={600}
+              onLoadSuccess={onPageLoadSuccess}
+            />
           </Document>
 
           {/* Draggable Signature Preview */}
@@ -136,21 +148,19 @@ const UploadAndSign = () => {
               onStop={handleDragStop}
               bounds="parent"
             >
-              <img
-                ref={draggableRef}
-                src={signatureImg}
-                alt="Signature"
-                style={{
-                  position: "absolute",
-                  top: position.y,
-                  left: position.x,
-                  width: "120px",
-                  cursor: "move",
-                  border: "1px solid #ccc",
-                  borderRadius: "6px",
-                  background: "#fff",
-                }}
-              />
+              <div ref={draggableRef} style={{ position: "absolute" }}>
+                <img
+                  src={signatureImg}
+                  alt="Signature"
+                  style={{
+                    width: "120px",
+                    cursor: "move",
+                    border: "1px solid #ccc",
+                    borderRadius: "6px",
+                    background: "#fff",
+                  }}
+                />
+              </div>
             </Draggable>
           )}
         </div>

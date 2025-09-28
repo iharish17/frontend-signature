@@ -5,11 +5,11 @@ import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 import API from "../utils/api";
 
-// PDF.js worker setup (for create-react-app)
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// ✅ Use local worker to avoid CORS issues!
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 const PREVIEW_WIDTH = 600;
-const PREVIEW_SIG_WIDTH = 120; // match the inline style on the draggable image
+const PREVIEW_SIG_WIDTH = 120; // px, matches the preview image
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -49,7 +49,6 @@ const UploadAndSign = () => {
 
   // Correctly capture page width & height from react-pdf
   const onPageLoadSuccess = (page) => {
-    // originalWidth/originalHeight are in points (default PDF-lib 1/72 inch)
     setPageDimensions({
       width: page.originalWidth,
       height: page.originalHeight,
@@ -90,13 +89,12 @@ const UploadAndSign = () => {
     const scaleX = pdfWidth / PREVIEW_WIDTH;
     const scaleY = pdfHeight / pageDimensions.height;
 
-    // Placement: UI origin is top-left, PDF-lib is bottom-left.
-    // Convert preview X/Y to PDF X/Y
-    // Drag X, Y are relative to the preview top-left corner.
+    // Preview signature dimensions (keeps aspect ratio)
     const sigPreviewWidth = PREVIEW_SIG_WIDTH;
-    const sigPreviewHeight = (PREVIEW_SIG_WIDTH * pageDimensions.height) / pageDimensions.width; // maintain aspect ratio
+    const sigPreviewHeight =
+      (PREVIEW_SIG_WIDTH * pageDimensions.height) / pageDimensions.width;
 
-    // Calculate the actual signature image width/height for the PDF
+    // Load the image and embed
     const imageRes = await fetch(signatureImg);
     const imageBytes = await imageRes.arrayBuffer();
 
@@ -106,15 +104,14 @@ const UploadAndSign = () => {
     } else {
       signatureImage = await pdfDoc.embedJpg(imageBytes);
     }
-    // Scale signature in PDF so that visually it's the same size as preview
+
+    // Calculate scaling for the PDF signature
     const sigScale = (sigPreviewWidth * scaleX) / signatureImage.width;
     const sigDims = signatureImage.scale(sigScale);
 
-    // Position: 
-    // Left = position.x * scaleX
-    // Bottom = (height - ((position.y + sigPreviewHeight) * scaleY))
+    // Position: UI origin is top-left, PDF-lib is bottom-left.
     const actualX = position.x * scaleX;
-    const actualY = pdfHeight - ((position.y + sigPreviewHeight) * scaleY);
+    const actualY = pdfHeight - (position.y * scaleY) - sigDims.height;
 
     page.drawImage(signatureImage, {
       x: actualX,
@@ -128,7 +125,7 @@ const UploadAndSign = () => {
 
     await uploadToBackend(blob);
 
-    // Trigger download + revoke object URL to prevent memory leaks
+    // Download + cleanup
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -154,7 +151,7 @@ const UploadAndSign = () => {
       {/* PDF Preview */}
       {pdfUrl && (
         <div
-          style={{ position: "relative", width: PREVIEW_WIDTH, minHeight: 50 }}
+          style={{ position: "relative", width: PREVIEW_WIDTH }}
           className="border shadow rounded"
         >
           <Document file={pdfUrl}>

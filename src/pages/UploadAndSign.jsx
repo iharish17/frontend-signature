@@ -3,7 +3,6 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { PDFDocument } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
-import API from "../utils/api";
 
 // ✅ Use local worker to avoid CORS issues!
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
@@ -55,28 +54,7 @@ const UploadAndSign = () => {
     });
   };
 
-  // Upload PDF to backend (unchanged)
-  const uploadToBackend = async (pdfBlob) => {
-    const file = new File([pdfBlob], `${Date.now()}-signed.pdf`, {
-      type: "application/pdf",
-    });
-    const formData = new FormData();
-    formData.append("pdf", file);
-
-    try {
-      await API.post("/docs/upload", formData, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-      toast.success("✅ Signed PDF uploaded to backend!");
-    } catch (err) {
-      toast.error("❌ Upload failed");
-      console.error(err.response?.data || err.message);
-    }
-  };
-
-  // Main signature logic - scaling and placement fixed!
+  // Main signature logic
   const handleDownload = async () => {
     if (!pdfFile || !signatureImg || !pageDimensions.width) return;
 
@@ -105,7 +83,6 @@ const UploadAndSign = () => {
       signatureImage = await pdfDoc.embedJpg(imageBytes);
     }
 
-    // Calculate scaling for the PDF signature
     const sigScale = (sigPreviewWidth * scaleX) / signatureImage.width;
     const sigDims = signatureImage.scale(sigScale);
 
@@ -123,9 +100,7 @@ const UploadAndSign = () => {
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
-    await uploadToBackend(blob);
-
-    // Download + cleanup
+    // Direct download (no backend)
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;

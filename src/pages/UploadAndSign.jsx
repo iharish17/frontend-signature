@@ -4,11 +4,11 @@ import { PDFDocument } from "pdf-lib";
 import Draggable from "react-draggable";
 import { toast } from "react-toastify";
 
-// ✅ Use local worker to avoid CORS issues!
+// Load PDF.js worker from local file in /public folder
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 const PREVIEW_WIDTH = 600;
-const PREVIEW_SIG_WIDTH = 120; // px, matches the preview image
+const PREVIEW_SIG_WIDTH = 120;
 
 const UploadAndSign = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -18,7 +18,6 @@ const UploadAndSign = () => {
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const draggableRef = useRef(null);
 
-  // PDF file upload
   const handlePdfChange = (e) => {
     const file = e.target.files[0];
     if (file && file.type === "application/pdf") {
@@ -29,7 +28,6 @@ const UploadAndSign = () => {
     }
   };
 
-  // Signature image upload (PNG/JPG)
   const handleSignatureChange = (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith("image/")) {
@@ -41,12 +39,10 @@ const UploadAndSign = () => {
     }
   };
 
-  // Track position for draggable element
   const handleDragStop = (e, data) => {
     setPosition({ x: data.x, y: data.y });
   };
 
-  // Correctly capture page width & height from react-pdf
   const onPageLoadSuccess = (page) => {
     setPageDimensions({
       width: page.originalWidth,
@@ -54,7 +50,6 @@ const UploadAndSign = () => {
     });
   };
 
-  // Main signature logic
   const handleDownload = async () => {
     if (!pdfFile || !signatureImg || !pageDimensions.width) return;
 
@@ -63,16 +58,13 @@ const UploadAndSign = () => {
     const page = pdfDoc.getPages()[0];
     const { width: pdfWidth, height: pdfHeight } = page.getSize();
 
-    // Calculate scaling between preview and actual PDF
     const scaleX = pdfWidth / PREVIEW_WIDTH;
     const scaleY = pdfHeight / pageDimensions.height;
 
-    // Preview signature dimensions (keeps aspect ratio)
     const sigPreviewWidth = PREVIEW_SIG_WIDTH;
     const sigPreviewHeight =
       (PREVIEW_SIG_WIDTH * pageDimensions.height) / pageDimensions.width;
 
-    // Load the image and embed
     const imageRes = await fetch(signatureImg);
     const imageBytes = await imageRes.arrayBuffer();
 
@@ -86,7 +78,6 @@ const UploadAndSign = () => {
     const sigScale = (sigPreviewWidth * scaleX) / signatureImage.width;
     const sigDims = signatureImage.scale(sigScale);
 
-    // Position: UI origin is top-left, PDF-lib is bottom-left.
     const actualX = position.x * scaleX;
     const actualY = pdfHeight - (position.y * scaleY) - sigDims.height;
 
@@ -100,7 +91,6 @@ const UploadAndSign = () => {
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
-    // Direct download (no backend)
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -117,13 +107,11 @@ const UploadAndSign = () => {
         Upload & Sign PDF
       </h1>
 
-      {/* Upload controls */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <input type="file" accept="application/pdf" onChange={handlePdfChange} />
         <input type="file" accept="image/*" onChange={handleSignatureChange} />
       </div>
 
-      {/* PDF Preview */}
       {pdfUrl && (
         <div
           style={{ position: "relative", width: PREVIEW_WIDTH }}
@@ -136,7 +124,6 @@ const UploadAndSign = () => {
               onLoadSuccess={onPageLoadSuccess}
             />
           </Document>
-          {/* Draggable Signature Preview */}
           {signatureImg && (
             <Draggable
               nodeRef={draggableRef}
@@ -172,7 +159,6 @@ const UploadAndSign = () => {
         </div>
       )}
 
-      {/* Download button */}
       {pdfUrl && signatureImg && (
         <button
           onClick={handleDownload}

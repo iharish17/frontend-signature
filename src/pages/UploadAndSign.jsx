@@ -1,172 +1,279 @@
 import React, { useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { PDFDocument } from "pdf-lib";
-import Draggable from "react-draggable";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { toast } from "react-toastify";
 
-// Load PDF.js worker from local file in /public folder
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
-const PREVIEW_WIDTH = 600;
-const PREVIEW_SIG_WIDTH = 120;
-
 const UploadAndSign = () => {
+  const containerRef = useRef(null);
+
+  // PDF
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [signatureImg, setSignatureImg] = useState(null);
-  const [position, setPosition] = useState({ x: 100, y: 100 });
-  const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
-  const draggableRef = useRef(null);
 
-  const handlePdfChange = (e) => {
+  // Signature type
+  const [signatureType, setSignatureType] = useState("text");
+  const [signatureText, setSignatureText] = useState("");
+  const [signatureImage, setSignatureImage] = useState(null);
+  const [font, setFont] = useState("Helvetica");
+
+  // Drag & resize
+  const [position, setPosition] = useState({ x: 120, y: 120 });
+  const [size, setSize] = useState({ width: 160, height: 60 });
+  const [dragging, setDragging] = useState(false);
+  const [resizing, setResizing] = useState(false);
+
+  /* ================= PDF UPLOAD ================= */
+
+  const handlePdfUpload = (e) => {
     const file = e.target.files[0];
-    if (file && file.type === "application/pdf") {
-      setPdfFile(file);
-      setPdfUrl(URL.createObjectURL(file));
-    } else {
-      toast.error("Please upload a valid PDF.");
+    if (!file || file.type !== "application/pdf") {
+      toast.error("Please upload a valid PDF");
+      return;
     }
+    setPdfFile(file);
+    setPdfUrl(URL.createObjectURL(file));
   };
 
-  const handleSignatureChange = (e) => {
+  /* ================= IMAGE SIGNATURE ================= */
+
+  const handleSignatureImageUpload = (e) => {
     const file = e.target.files[0];
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = () => setSignatureImg(reader.result);
-      reader.readAsDataURL(file);
-    } else {
-      toast.error("Please upload an image (PNG/JPG).");
+    if (!file || !file.type.startsWith("image/")) {
+      toast.error("Upload a valid image");
+      return;
+    }
+    setSignatureImage(file);
+  };
+
+  /* ================= DRAG & TOUCH ================= */
+
+  const startDrag = () => setDragging(true);
+  const endActions = () => {
+    setDragging(false);
+    setResizing(false);
+  };
+
+  const moveDrag = (e) => {
+    if ((!dragging && !resizing) || !containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    if (dragging) {
+      setPosition({
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      });
+    }
+
+    if (resizing) {
+      setSize((prev) => ({
+        width: Math.max(60, prev.width + e.movementX),
+        height: Math.max(30, prev.height + e.movementY)
+      }));
     }
   };
 
-  const handleDragStop = (e, data) => {
-    setPosition({ x: data.x, y: data.y });
-  };
+  /* ================= SIGN & SAVE ================= */
 
-  const onPageLoadSuccess = (page) => {
-    setPageDimensions({
-      width: page.originalWidth,
-      height: page.originalHeight,
-    });
-  };
-
-  const handleDownload = async () => {
-    if (!pdfFile || !signatureImg || !pageDimensions.width) return;
-
-    const existingPdfBytes = await pdfFile.arrayBuffer();
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
-    const page = pdfDoc.getPages()[0];
-    const { width: pdfWidth, height: pdfHeight } = page.getSize();
-
-    const scaleX = pdfWidth / PREVIEW_WIDTH;
-    const scaleY = pdfHeight / pageDimensions.height;
-
-    const sigPreviewWidth = PREVIEW_SIG_WIDTH;
-    const sigPreviewHeight =
-      (PREVIEW_SIG_WIDTH * pageDimensions.height) / pageDimensions.width;
-
-    const imageRes = await fetch(signatureImg);
-    const imageBytes = await imageRes.arrayBuffer();
-
-    let signatureImage;
-    if (signatureImg.startsWith("data:image/png")) {
-      signatureImage = await pdfDoc.embedPng(imageBytes);
-    } else {
-      signatureImage = await pdfDoc.embedJpg(imageBytes);
+  const signAndDownload = async () => {
+    if (!pdfFile) {
+      toast.error("Upload a PDF first");
+      return;
     }
 
-    const sigScale = (sigPreviewWidth * scaleX) / signatureImage.width;
-    const sigDims = signatureImage.scale(sigScale);
+    if (signatureType === "text" && !signatureText.trim()) {
+      toast.error("Enter signature text");
+      return;
+    }
 
-    const actualX = position.x * scaleX;
-    const actualY = pdfHeight - (position.y * scaleY) - sigDims.height;
+    if (signatureType === "image" && !signatureImage) {
+      toast.error("Upload signature image");
+      return;
+    }
 
-    page.drawImage(signatureImage, {
-      x: actualX,
-      y: actualY,
-      width: sigDims.width,
-      height: sigDims.height,
-    });
+    try {
+      const pdfBytes = await pdfFile.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      const page = pdfDoc.getPages()[0];
 
-    const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      if (signatureType === "text") {
+        const fontMap = {
+          Helvetica: StandardFonts.Helvetica,
+          TimesRoman: StandardFonts.TimesRoman,
+          Courier: StandardFonts.Courier
+        };
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "signed-document.pdf";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+        const embeddedFont = await pdfDoc.embedFont(
+          fontMap[font] || StandardFonts.Helvetica
+        );
+
+        page.drawText(signatureText, {
+          x: position.x,
+          y: page.getHeight() - position.y,
+          size: 24,
+          font: embeddedFont,
+          color: rgb(0, 0, 0)
+        });
+      }
+
+      if (signatureType === "image") {
+        const imgBytes = await signatureImage.arrayBuffer();
+        const image = signatureImage.type.includes("png")
+          ? await pdfDoc.embedPng(imgBytes)
+          : await pdfDoc.embedJpg(imgBytes);
+
+        page.drawImage(image, {
+          x: position.x,
+          y: page.getHeight() - position.y,
+          width: size.width,
+          height: size.height
+        });
+      }
+
+      const signedPdf = await pdfDoc.save();
+      const blob = new Blob([signedPdf], { type: "application/pdf" });
+
+      /* ===== SAVE TO BACKEND ===== */
+      const formData = new FormData();
+      formData.append("pdf", blob, "signed-document.pdf");
+
+      await fetch("http://localhost:5000/api/documents/upload", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
+        },
+        body: formData
+      });
+
+      /* ===== DOWNLOAD LOCALLY ===== */
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "signed-document.pdf";
+      a.click();
+
+      toast.success("PDF signed & saved successfully");
+    } catch {
+      toast.error("Failed to sign PDF");
+    }
   };
+
+  /* ================= UI ================= */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-100 flex flex-col items-center p-6">
-      <h1 className="text-3xl font-bold mb-6 text-blue-700">
-        Upload & Sign PDF
-      </h1>
+    <div className="p-6">
+      <h2 className="text-xl font-bold mb-4">Upload & Sign PDF</h2>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <input type="file" accept="application/pdf" onChange={handlePdfChange} />
-        <input type="file" accept="image/*" onChange={handleSignatureChange} />
+      <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+
+      <div className="my-4">
+        <label>
+          <input
+            type="radio"
+            checked={signatureType === "text"}
+            onChange={() => setSignatureType("text")}
+          />{" "}
+          Text Signature
+        </label>
+
+        <label className="ml-4">
+          <input
+            type="radio"
+            checked={signatureType === "image"}
+            onChange={() => setSignatureType("image")}
+          />{" "}
+          Image Signature
+        </label>
       </div>
+
+      {signatureType === "text" && (
+        <>
+          <input
+            type="text"
+            placeholder="Enter signature text"
+            value={signatureText}
+            onChange={(e) => setSignatureText(e.target.value)}
+            className="border p-2 mb-2 w-full"
+          />
+
+          <select
+            value={font}
+            onChange={(e) => setFont(e.target.value)}
+            className="border p-2 mb-4"
+          >
+            <option value="Helvetica">Helvetica</option>
+            <option value="TimesRoman">Times Roman</option>
+            <option value="Courier">Courier</option>
+          </select>
+        </>
+      )}
+
+      {signatureType === "image" && (
+        <input type="file" accept="image/*" onChange={handleSignatureImageUpload} />
+      )}
 
       {pdfUrl && (
         <div
-          style={{ position: "relative", width: PREVIEW_WIDTH }}
-          className="border shadow rounded"
+          ref={containerRef}
+          className="relative border mt-4"
+          onMouseMove={moveDrag}
+          onMouseUp={endActions}
+          onTouchMove={moveDrag}
+          onTouchEnd={endActions}
         >
           <Document file={pdfUrl}>
-            <Page
-              pageNumber={1}
-              width={PREVIEW_WIDTH}
-              onLoadSuccess={onPageLoadSuccess}
-            />
+            <Page pageNumber={1} />
           </Document>
-          {signatureImg && (
-            <Draggable
-              nodeRef={draggableRef}
-              onStop={handleDragStop}
-              bounds="parent"
-              position={position}
-            >
-              <div
-                ref={draggableRef}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  zIndex: 10,
-                  pointerEvents: "all",
-                }}
-              >
-                <img
-                  src={signatureImg}
-                  alt="Signature"
-                  style={{
-                    width: PREVIEW_SIG_WIDTH,
-                    cursor: "move",
-                    border: "1px solid #ccc",
-                    borderRadius: "6px",
-                    background: "#fff",
-                  }}
-                  draggable={false}
-                />
-              </div>
-            </Draggable>
-          )}
+
+          <div
+            onMouseDown={startDrag}
+            onTouchStart={startDrag}
+            style={{
+              position: "absolute",
+              left: position.x,
+              top: position.y,
+              width: size.width,
+              height: size.height,
+              cursor: "move",
+              background: "white",
+              border: "1px solid black",
+              padding: "4px"
+            }}
+          >
+            {signatureType === "text"
+              ? signatureText || "Signature"
+              : "Signature Image"}
+
+            {/* Resize handle */}
+            <div
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setResizing(true);
+              }}
+              style={{
+                position: "absolute",
+                right: 0,
+                bottom: 0,
+                width: "12px",
+                height: "12px",
+                background: "#2563eb",
+                cursor: "nwse-resize"
+              }}
+            />
+          </div>
         </div>
       )}
 
-      {pdfUrl && signatureImg && (
-        <button
-          onClick={handleDownload}
-          className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-        >
-          Sign & Download
-        </button>
-      )}
+      <button
+        onClick={signAndDownload}
+        className="bg-blue-600 text-white px-4 py-2 mt-4"
+      >
+        Sign & Download
+      </button>
     </div>
   );
 };

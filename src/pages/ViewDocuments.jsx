@@ -10,7 +10,7 @@ function ViewDocuments() {
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const res = await API.get('/docs/mine', {
+        const res = await API.get("/documents/mine", {
           headers: { Authorization: `Bearer ${user.token}` },
         });
         setDocs(res.data);
@@ -22,22 +22,34 @@ function ViewDocuments() {
   }, [user.token]);
 
   const handleDownload = async (id) => {
-    try {
-      const res = await API.get(`/docs/${id}`, {
-        headers: { Authorization: `Bearer ${user.token}` },
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'signed-document.pdf');
-      document.body.appendChild(link);
-      link.click();
-    } catch (err) {
-      console.error('Download failed:', err);
-      alert('Download failed');
-    }
-  };
+  try {
+    const res = await API.get(
+  `/documents/download/${id}`,
+  {
+    headers: {
+      Authorization: `Bearer ${user.token}`
+    },
+    responseType: "blob"
+  }
+);
+
+
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "signed-document.pdf";
+
+    document.body.appendChild(link);
+    link.click();
+
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Download failed:", err);
+    alert("Download failed");
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -52,7 +64,7 @@ function ViewDocuments() {
               key={doc._id}
               className="bg-white p-4 shadow rounded flex justify-between items-center"
             >
-              <span>{doc.fileName}</span>
+              <span>{doc.filename}</span>
               <button
                 onClick={() => handleDownload(doc._id)}
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"

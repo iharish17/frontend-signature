@@ -173,7 +173,7 @@ const UploadAndSign = () => {
       const fd = new FormData();
       fd.append("pdf", blob, "signed-document.pdf");
 
-      await fetch("http://localhost:5000/api/documents/upload", {
+      await fetch("https://backend-signature.onrender.com/api/documents/upload", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`
